@@ -84,8 +84,10 @@ type diskstatsCollector struct {
 	filesystemInfoDesc      typedFactorDesc
 	deviceMapperInfoDesc    typedFactorDesc
 	ataDescs                map[string]typedFactorDesc
+	smartctlDesc            typedFactorDesc
 	logger                  *slog.Logger
 	getUdevDeviceProperties func(uint32, uint32) (udevInfo, error)
+	smartctl                *Smartctl
 }
 
 func init() {
@@ -256,7 +258,15 @@ func NewDiskstatsCollector(logger *slog.Logger) (Collector, error) {
 				), valueType: prometheus.GaugeValue,
 			},
 		},
-		logger: logger,
+		smartctlDesc: typedFactorDesc{
+			desc: prometheus.NewDesc(prometheus.BuildFQName(namespace, diskSubsystem, "smartctl_info"),
+				"Info of smartctl command.",
+				[]string{"device", "name", "type", "serial", "model", "vendor", "health_ok", "firmware", "capacity", "protocol", "logical_block_size", "physical_block_size", "rotational"},
+				nil,
+			), valueType: prometheus.GaugeValue,
+		},
+		logger:   logger,
+		smartctl: SmartctlNew(),
 	}
 
 	// Only enable getting device properties from udev if the directory is readable.
@@ -274,11 +284,22 @@ func (c *diskstatsCollector) Update(ch chan<- prometheus.Metric) error {
 	if err != nil {
 		return fmt.Errorf("couldn't get diskstats: %w", err)
 	}
+	c.logger.Info("diskstats", "info: ", diskStats)
+
+	smartctlResult, err := c.scan()
+	if err != nil {
+		c.logger.Info("Failed to get smartctl result", "err", err)
+	}
 
 	for _, stats := range diskStats {
 		dev := stats.DeviceName
 		if c.deviceFilter.ignored(dev) {
 			continue
+		}
+
+		smartJSON, exists := getDeviceResult(smartctlResult, stats.DeviceName)
+		if !exists {
+			c.logger.Info("get device result from smartctl failed")
 		}
 
 		info, err := getUdevDeviceProperties(stats.MajorNumber, stats.MinorNumber)
@@ -300,7 +321,8 @@ func (c *diskstatsCollector) Update(ch chan<- prometheus.Metric) error {
 			c.logger.Debug("Failed to get block device queue stats", "device", dev, "err", err)
 		}
 
-		ch <- c.infoDesc.mustNewConstMetric(1.0, dev,
+		ch <- c.infoDesc.mustNewConstMetric(1.0,
+			dev,
 			fmt.Sprint(stats.MajorNumber),
 			fmt.Sprint(stats.MinorNumber),
 			info[udevIDPath],
@@ -336,6 +358,48 @@ func (c *diskstatsCollector) Update(ch chan<- prometheus.Metric) error {
 				break
 			}
 			ch <- c.descs[i].mustNewConstMetric(val, dev)
+		}
+		if smartJSON != nil {
+			fieldDesc := prometheus.NewDesc(
+				prometheus.BuildFQName(namespace, diskSubsystem, "temp_celsius"),
+				"temp_celsius from smartctl",
+				[]string{"device"},
+				nil,
+			)
+			ch <- prometheus.MustNewConstMetric(fieldDesc, prometheus.GaugeValue, float64(smartJSON.Temperature.Current), dev)
+
+			fieldDesc = prometheus.NewDesc(
+				prometheus.BuildFQName(namespace, diskSubsystem, "power_on_hours"),
+				"power_on_hours from smartctl",
+				[]string{"device"},
+				nil,
+			)
+			powerOnHours := int64(smartJSON.PowerOnTime.Hours)
+			if smartJSON.Device.Type == "nvme" {
+				powerOnHours = smartJSON.NvmeSmartHealthInformationLog.PowerOnHours
+			}
+			ch <- prometheus.MustNewConstMetric(fieldDesc, prometheus.GaugeValue, float64(powerOnHours), dev)
+
+			ch <- c.smartctlDesc.mustNewConstMetric(1.0,
+				dev,
+				smartJSON.Device.Name,
+				smartJSON.Device.Type,
+				smartJSON.SerialNumber,
+				smartJSON.ModelName,
+				smartJSON.Vendor,
+				strconv.FormatBool(smartJSON.SmartStatus.Passed),
+				smartJSON.FirmwareVersion,
+				strconv.FormatInt(smartJSON.UserCapacity.Bytes, 10),
+				smartJSON.Device.Protocol,
+				strconv.FormatInt(int64(smartJSON.LogicalBlockSize), 10),
+				strconv.FormatInt(int64(smartJSON.PhysicalBlockSize), 10),
+				func() string {
+					if smartJSON.RotationRate > 0 {
+						return "1"
+					}
+					return "0"
+				}(),
+			)
 		}
 
 		if fsType := info[udevIDFSType]; fsType != "" {
@@ -410,4 +474,47 @@ func getUdevDeviceProperties(major, minor uint32) (udevInfo, error) {
 	}
 
 	return info, nil
+}
+
+func (c *diskstatsCollector) scan() (map[string]*smartctlDeviceJSON, error) {
+	if c.smartctl == nil {
+		return nil, fmt.Errorf("smartctl is nil in diskstatsCollector")
+	}
+	devices, err := c.smartctl.scan()
+	if err != nil {
+		return nil, fmt.Errorf("smartctl scan device error: %w", err)
+	}
+	result := make(map[string]*smartctlDeviceJSON)
+	for _, device := range devices {
+		res, err := c.smartctl.scanDevice(device.Name, device.Type)
+		if err != nil {
+			return nil, fmt.Errorf("smarctl scan device: %s, error: %w", device.Name, err)
+		}
+		result[device.Name] = res
+	}
+	return result, nil
+}
+
+func getDeviceResult(deviceMap map[string]*smartctlDeviceJSON, shortDeviceName string) (*smartctlDeviceJSON, bool) {
+	fullPath := "/dev/" + shortDeviceName
+	if r, exists := deviceMap[fullPath]; exists {
+		return r, true
+	}
+
+	for devPath := range deviceMap {
+		if strings.HasPrefix(devPath, "/dev/") {
+			deviceName := strings.TrimPrefix(devPath, "/dev/")
+			if deviceName == shortDeviceName {
+				fullPath = devPath
+			}
+			if strings.HasPrefix(shortDeviceName, deviceName) {
+				fullPath = devPath
+			}
+			if strings.HasPrefix(deviceName, shortDeviceName) {
+				fullPath = devPath
+			}
+		}
+	}
+	r, exists := deviceMap[fullPath]
+	return r, exists
 }
