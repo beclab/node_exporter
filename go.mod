@@ -60,4 +60,6 @@ require (
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 )
 
+replace github.com/prometheus/procfs => github.com/beclab/procfs v0.15.1-ext-1
+
 //replace github.com/prometheus/procfs => github.com/rexagod/procfs v0.0.0-20241124020414-857c5b813f1b

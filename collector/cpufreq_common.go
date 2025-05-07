@@ -46,6 +46,11 @@ var (
 		"Minimum scaled CPU thread frequency in hertz.",
 		[]string{"cpu"}, nil,
 	)
+	cpuFreqBaseFreqDesc = prometheus.NewDesc(
+		prometheus.BuildFQName(namespace, cpuCollectorSubsystem, "base_frequency_hertz"),
+		"Base frequency in hertz",
+		[]string{"cpu"}, nil,
+	)
 	cpuFreqScalingFreqMaxDesc = prometheus.NewDesc(
 		prometheus.BuildFQName(namespace, cpuCollectorSubsystem, "scaling_frequency_max_hertz"),
 		"Maximum scaled CPU thread frequency in hertz.",

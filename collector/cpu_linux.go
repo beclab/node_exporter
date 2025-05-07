@@ -17,7 +17,6 @@
 package collector
 
 import (
-	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -354,22 +353,22 @@ func (c *cpuCollector) updateIsolated(ch chan<- prometheus.Metric) {
 
 // updateOnline reads /sys/devices/system/cpu/cpu*/online through sysfs and exports online status metrics.
 func (c *cpuCollector) updateOnline(ch chan<- prometheus.Metric) error {
-	cpus, err := c.sysfs.CPUs()
-	if err != nil {
-		return err
-	}
+	//cpus, err := c.sysfs.CPUs()
+	//if err != nil {
+	//	return err
+	//}
 	// No-op if the system does not support CPU online stats.
-	cpu0 := cpus[0]
-	if _, err := cpu0.Online(); err != nil && errors.Is(err, os.ErrNotExist) {
-		return nil
-	}
-	for _, cpu := range cpus {
-		setOnline := float64(0)
-		if online, _ := cpu.Online(); online {
-			setOnline = 1
-		}
-		ch <- prometheus.MustNewConstMetric(c.cpuOnline, prometheus.GaugeValue, setOnline, cpu.Number())
-	}
+	//cpu0 := cpus[0]
+	//if _, err := cpu0.Online(); err != nil && errors.Is(err, os.ErrNotExist) {
+	//	return nil
+	//}
+	//for _, cpu := range cpus {
+	//	setOnline := float64(0)
+	//	if online, _ := cpu.Online(); online {
+	//		setOnline = 1
+	//	}
+	//	ch <- prometheus.MustNewConstMetric(c.cpuOnline, prometheus.GaugeValue, setOnline, cpu.Number())
+	//}
 
 	return nil
 }
