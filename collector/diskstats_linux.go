@@ -284,7 +284,6 @@ func (c *diskstatsCollector) Update(ch chan<- prometheus.Metric) error {
 	if err != nil {
 		return fmt.Errorf("couldn't get diskstats: %w", err)
 	}
-	c.logger.Info("diskstats", "info: ", diskStats)
 
 	smartctlResult, err := c.scan()
 	if err != nil {
@@ -400,6 +399,42 @@ func (c *diskstatsCollector) Update(ch chan<- prometheus.Metric) error {
 					return "0"
 				}(),
 			)
+
+			fieldDesc = prometheus.NewDesc(
+				prometheus.BuildFQName(namespace, diskSubsystem, "data_bytes_written"),
+				"data_bytes_written from smartctl",
+				[]string{"device"},
+				nil,
+			)
+			dataBytesWritten := int64(0)
+			if smartJSON.Device.Type == "nvme" {
+				dataBytesWritten = smartJSON.NvmeSmartHealthInformationLog.DataUnitsWritten * 512000
+			} else {
+				for _, t := range smartJSON.AtaSmartAttributes.Table {
+					if t.Name == "Total_LBAs_Written" {
+						dataBytesWritten = t.Raw.Value * int64(smartJSON.LogicalBlockSize)
+					}
+				}
+			}
+			ch <- prometheus.MustNewConstMetric(fieldDesc, prometheus.CounterValue, float64(dataBytesWritten), dev)
+
+			fieldDesc = prometheus.NewDesc(
+				prometheus.BuildFQName(namespace, diskSubsystem, "data_bytes_read"),
+				"data_bytes_read from smartctl",
+				[]string{"device"},
+				nil,
+			)
+			dataBytesRead := int64(0)
+			if smartJSON.Device.Type == "nvme" {
+				dataBytesRead = smartJSON.NvmeSmartHealthInformationLog.DataUnitsRead * 512000
+			} else {
+				for _, t := range smartJSON.AtaSmartAttributes.Table {
+					if t.Name == "Total_LBAs_Read" {
+						dataBytesRead = t.Raw.Value * int64(smartJSON.LogicalBlockSize)
+					}
+				}
+			}
+			ch <- prometheus.MustNewConstMetric(fieldDesc, prometheus.CounterValue, float64(dataBytesRead), dev)
 		}
 
 		if fsType := info[udevIDFSType]; fsType != "" {
