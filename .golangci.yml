@@ -1,6 +1,5 @@
 linters:
   enable:
-    - depguard
     - goimports
     - misspell
     - revive
