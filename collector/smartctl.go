@@ -4,9 +4,10 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"github.com/prometheus/node_exporter/collector/utils"
 	"os/exec"
 	"time"
+
+	"github.com/prometheus/node_exporter/collector/utils"
 )
 
 var execCommand = exec.Command
@@ -165,6 +166,14 @@ type smartctlDeviceJSON struct {
 	UserCapacity struct {
 		Bytes int64 `json:"bytes"`
 	} `json:"user_capacity"`
+	SataVersion struct {
+		Name  string `json:"string"`
+		Value int64  `json:"value"`
+	} `json:"sata_version"`
+	SataInterfaceSpeed struct {
+		Max     InterfaceSpeed `json:"max"`
+		Current InterfaceSpeed `json:"current"`
+	} `json:"interface_speed"`
 	SmartStatus struct {
 		Passed bool `json:"passed"`
 	} `json:"smart_status"`
@@ -245,6 +254,13 @@ type smartctlDeviceJSON struct {
 		} `json:"verify"`
 	} `json:"scsi_error_counter_log"`
 }
+type InterfaceSpeed struct {
+	SataValue      int    `json:"sata_value"`
+	String         string `json:"string"`
+	UnitsPerSecond int    `json:"units_per_second"`
+	BitsPerUnit    int    `json:"bits_per_unit"`
+}
+
 type smartctlScanJSON struct {
 	JSONFormatVersion []int `json:"json_format_version"`
 	Smartctl          struct {
