@@ -15,6 +15,14 @@ var pciSpeedVersionMap = map[string]string{
 	"32GT/s":  "PCIe 5.0",
 	"64GT/s":  "PCIe 6.0",
 }
+var versionToSpeedMap = map[string]string{
+	"PCIe 1.0": "2.5GT/s",
+	"PCIe 2.0": "5GT/s",
+	"PCIe 3.0": "8GT/s",
+	"PCIe 4.0": "16GT/s",
+	"PCIe 5.0": "32GT/s",
+	"PCIe 6.0": "64GT/s",
+}
 
 type NvmeDevice struct {
 	HostNQN    string       `json:"HostNQN"`

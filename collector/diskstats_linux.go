@@ -262,7 +262,7 @@ func NewDiskstatsCollector(logger *slog.Logger) (Collector, error) {
 		smartctlDesc: typedFactorDesc{
 			desc: prometheus.NewDesc(prometheus.BuildFQName(namespace, diskSubsystem, "smartctl_info"),
 				"Info of smartctl command.",
-				[]string{"device", "name", "type", "serial", "model", "vendor", "health_ok", "firmware", "capacity", "protocol", "logical_block_size", "physical_block_size", "rotational", "pcie_version"},
+				[]string{"device", "name", "type", "serial", "model", "vendor", "health_ok", "firmware", "capacity", "protocol", "logical_block_size", "physical_block_size", "rotational", "pcie_version", "sata_version"},
 				nil,
 			), valueType: prometheus.GaugeValue,
 		},
@@ -309,6 +309,7 @@ func (c *diskstatsCollector) Update(ch chan<- prometheus.Metric) error {
 		var pcieVersion string
 		if address, ok := deviceToPcieVersionMap[dev]; ok {
 			pcieVersion, _ = c.nvmePciCtl.pciVersion(address)
+			pcieVersion = fmt.Sprintf("%s, %s", pcieVersion, versionToSpeedMap[pcieVersion])
 		}
 
 		smartJSON, exists := getDeviceResult(smartctlResult, stats.DeviceName)
@@ -392,6 +393,10 @@ func (c *diskstatsCollector) Update(ch chan<- prometheus.Metric) error {
 			if smartJSON.Device.Type == "nvme" {
 				powerOnHours = smartJSON.NvmeSmartHealthInformationLog.PowerOnHours
 			}
+			sataVersion := ""
+			if smartJSON.Device.Type == "sat" {
+				sataVersion = fmt.Sprintf("%s, %s", smartJSON.SataVersion.Name, smartJSON.SataInterfaceSpeed.Current.String)
+			}
 			ch <- prometheus.MustNewConstMetric(fieldDesc, prometheus.GaugeValue, float64(powerOnHours), dev)
 
 			ch <- c.smartctlDesc.mustNewConstMetric(1.0,
@@ -414,6 +419,7 @@ func (c *diskstatsCollector) Update(ch chan<- prometheus.Metric) error {
 					return "0"
 				}(),
 				pcieVersion,
+				sataVersion,
 			)
 
 			fieldDesc = prometheus.NewDesc(
