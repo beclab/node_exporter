@@ -547,6 +547,9 @@ func (c *diskstatsCollector) scan() (map[string]*smartctlDeviceJSON, error) {
 		if err != nil {
 			return nil, fmt.Errorf("smarctl scan device: %s, error: %w", device.Name, err)
 		}
+		if strings.Contains(strings.ToUpper(res.SCSIVendor), "QEMU") {
+			continue
+		}
 		result[device.Name] = res
 	}
 	return result, nil
