@@ -62,6 +62,9 @@ func (s *Smartctl) scan() ([]scanDevice, error) {
 	}
 	devices := make([]scanDevice, 0)
 	for _, device := range scan.Devices {
+		if device.OpenError != "" {
+			continue
+		}
 		dev := scanDevice{
 			Name: device.Name,
 			Type: device.Type,
@@ -273,9 +276,10 @@ type smartctlScanJSON struct {
 		ExitStatus   int      `json:"exit_status"`
 	} `json:"smartctl"`
 	Devices []struct {
-		Name     string `json:"name"`
-		InfoName string `json:"info_name"`
-		Type     string `json:"type"`
-		Protocol string `json:"protocol"`
+		Name      string `json:"name"`
+		InfoName  string `json:"info_name"`
+		Type      string `json:"type"`
+		Protocol  string `json:"protocol"`
+		OpenError string `json:"open_error,omitempty"`
 	} `json:"devices"`
 }

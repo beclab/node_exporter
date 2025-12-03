@@ -314,7 +314,7 @@ func (c *diskstatsCollector) Update(ch chan<- prometheus.Metric) error {
 
 		smartJSON, exists := getDeviceResult(smartctlResult, stats.DeviceName)
 		if !exists {
-			c.logger.Info("get device result from smartctl failed")
+			c.logger.Info("get device result from smartctl failed", "deviceName", stats.DeviceName)
 		}
 
 		info, err := getUdevDeviceProperties(stats.MajorNumber, stats.MinorNumber)
