@@ -68,13 +68,21 @@ func lsblkStringPtr(s *string) string {
 	return *s
 }
 
+// lsblkMountpointForLabels maps mount paths under --path.rootfs to the host view (same as filesystem collector).
+func lsblkMountpointForLabels(mp *string) string {
+	if mp == nil || *mp == "" {
+		return ""
+	}
+	return rootfsStripPrefix(*mp)
+}
+
 func (c *lsblkCollector) emitRecursive(ch chan<- prometheus.Metric, devices []lsblkJSONDevice, parent string) {
 	for _, d := range devices {
 		ch <- prometheus.MustNewConstMetric(c.infoDesc, prometheus.GaugeValue, 1,
 			d.Name,
 			parent,
 			lsblkStringPtr(d.Fstype),
-			lsblkStringPtr(d.Mountpoint),
+			lsblkMountpointForLabels(d.Mountpoint),
 			lsblkStringPtr(d.Size),
 			lsblkStringPtr(d.Fsused),
 			lsblkStringPtr(d.FsusePct),
