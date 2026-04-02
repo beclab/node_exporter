@@ -94,6 +94,7 @@ supported_enabled_collectors=$(supported_collectors "${enabled_collectors}")
 disabled_collectors=$(cat << COLLECTORS
   selinux
   filesystem
+  lsblk
   timex
   uname
 COLLECTORS
