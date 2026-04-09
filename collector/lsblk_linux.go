@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"strconv"
 
 	"github.com/alecthomas/kingpin/v2"
 	"github.com/prometheus/client_golang/prometheus"
@@ -53,10 +54,10 @@ type lsblkJSONRoot struct {
 
 type lsblkJSONDevice struct {
 	Name       string            `json:"name"`
-	Size       *string           `json:"size"`
+	Size       *int64            `json:"size"`
 	Fstype     *string           `json:"fstype"`
 	Mountpoint *string           `json:"mountpoint"`
-	Fsused     *string           `json:"fsused"`
+	Fsused     *int64            `json:"fsused"`
 	FsusePct   *string           `json:"fsuse%"`
 	Children   []lsblkJSONDevice `json:"children"`
 }
@@ -66,6 +67,12 @@ func lsblkStringPtr(s *string) string {
 		return ""
 	}
 	return *s
+}
+func int64PtrToString(i *int64) string {
+	if i == nil {
+		return ""
+	}
+	return strconv.FormatInt(*i, 10)
 }
 
 // lsblkMountpointForLabels maps mount paths under --path.rootfs to the host view (same as filesystem collector).
@@ -83,8 +90,8 @@ func (c *lsblkCollector) emitRecursive(ch chan<- prometheus.Metric, devices []ls
 			parent,
 			lsblkStringPtr(d.Fstype),
 			lsblkMountpointForLabels(d.Mountpoint),
-			lsblkStringPtr(d.Size),
-			lsblkStringPtr(d.Fsused),
+			int64PtrToString(d.Size),
+			int64PtrToString(d.Fsused),
 			lsblkStringPtr(d.FsusePct),
 		)
 		if len(d.Children) > 0 {
@@ -103,7 +110,7 @@ func (c *lsblkCollector) Update(ch chan<- prometheus.Metric) error {
 		return ErrNoData
 	}
 
-	args := []string{"--json", "-o", "NAME,SIZE,FSTYPE,MOUNTPOINT,FSUSED,FSUSE%"}
+	args := []string{"--json", "-b", "-o", "NAME,SIZE,FSTYPE,MOUNTPOINT,FSUSED,FSUSE%"}
 	cmd := execCommand(path, args...)
 	out, err := CombinedOutputTimeout(cmd, *lsblkTimeout)
 	if err != nil {

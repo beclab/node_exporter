@@ -19,13 +19,13 @@ package collector
 import (
 	"errors"
 	"fmt"
-	"log/slog"
-	"os"
-	"strconv"
-
 	"github.com/alecthomas/kingpin/v2"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/procfs/sysfs"
+	"log/slog"
+	"os"
+	"path/filepath"
+	"strconv"
 )
 
 const raplCollectorSubsystem = "rapl"
@@ -35,6 +35,10 @@ type raplCollector struct {
 	logger *slog.Logger
 
 	joulesMetricDesc *prometheus.Desc
+
+	constraint0MaxPowerUWDesc   *prometheus.Desc
+	constraint0PowerLimitUWDesc *prometheus.Desc
+	constraint1PowerLimitUWDesc *prometheus.Desc
 }
 
 func init() {
@@ -59,10 +63,30 @@ func NewRaplCollector(logger *slog.Logger) (Collector, error) {
 		[]string{"index", "path", "rapl_zone"}, nil,
 	)
 
+	constraintLabels := []string{"index", "path"}
+	if *raplZoneLabel {
+		constraintLabels = []string{"index", "path", "rapl_zone"}
+	}
+
 	collector := raplCollector{
 		fs:               fs,
 		logger:           logger,
 		joulesMetricDesc: joulesMetricDesc,
+		constraint0MaxPowerUWDesc: prometheus.NewDesc(
+			prometheus.BuildFQName(namespace, raplCollectorSubsystem, "constraint_0_max_power_uw"),
+			"RAPL constraint_0 maximum power in microwatts (powercap constraint_0_max_power_uw).",
+			constraintLabels, nil,
+		),
+		constraint0PowerLimitUWDesc: prometheus.NewDesc(
+			prometheus.BuildFQName(namespace, raplCollectorSubsystem, "constraint_0_power_limit_uw"),
+			"RAPL constraint_0 power limit in microwatts (powercap constraint_0_power_limit_uw).",
+			constraintLabels, nil,
+		),
+		constraint1PowerLimitUWDesc: prometheus.NewDesc(
+			prometheus.BuildFQName(namespace, raplCollectorSubsystem, "constraint_1_power_limit_uw"),
+			"RAPL constraint_1 power limit in microwatts (powercap constraint_1_power_limit_uw).",
+			constraintLabels, nil,
+		),
 	}
 	return &collector, nil
 }
@@ -100,8 +124,31 @@ func (c *raplCollector) Update(ch chan<- prometheus.Metric) error {
 		} else {
 			ch <- c.joulesMetric(rz, joules)
 		}
+
+		c.emitRAPLConstraintUW(ch, c.constraint0MaxPowerUWDesc, rz, "constraint_0_max_power_uw")
+		c.emitRAPLConstraintUW(ch, c.constraint0PowerLimitUWDesc, rz, "constraint_0_power_limit_uw")
+		c.emitRAPLConstraintUW(ch, c.constraint1PowerLimitUWDesc, rz, "constraint_1_power_limit_uw")
 	}
 	return nil
+}
+
+func (c *raplCollector) emitRAPLConstraintUW(ch chan<- prometheus.Metric, desc *prometheus.Desc, rz sysfs.RaplZone, fileName string) {
+	p := filepath.Join(rz.Path, fileName)
+	v, err := readUintFromFile(p)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return
+		}
+		c.logger.Debug("skipping RAPL constraint file", "path", p, "err", err)
+		return
+	}
+
+	index := strconv.Itoa(rz.Index)
+	if *raplZoneLabel {
+		ch <- prometheus.MustNewConstMetric(desc, prometheus.GaugeValue, float64(v), index, rz.Path, rz.Name)
+		return
+	}
+	ch <- prometheus.MustNewConstMetric(desc, prometheus.GaugeValue, float64(v), index, rz.Path)
 }
 
 func (c *raplCollector) joulesMetric(z sysfs.RaplZone, v float64) prometheus.Metric {
