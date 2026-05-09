@@ -53,6 +53,7 @@ const (
 	udevIDATASATASignalRateGen2 = "ID_ATA_SATA_SIGNAL_RATE_GEN2"
 	udevIDATAWriteCache         = "ID_ATA_WRITE_CACHE"
 	udevIDATAWriteCacheEnabled  = "ID_ATA_WRITE_CACHE_ENABLED"
+	udevIDBus                   = "ID_BUS"
 	udevIDFSType                = "ID_FS_TYPE"
 	udevIDFSUsage               = "ID_FS_USAGE"
 	udevIDFSUUID                = "ID_FS_UUID"
@@ -115,7 +116,7 @@ func NewDiskstatsCollector(logger *slog.Logger) (Collector, error) {
 		infoDesc: typedFactorDesc{
 			desc: prometheus.NewDesc(prometheus.BuildFQName(namespace, diskSubsystem, "info"),
 				"Info of /sys/block/<block_device>.",
-				[]string{"device", "major", "minor", "path", "wwn", "model", "serial", "revision", "rotational"},
+				[]string{"device", "major", "minor", "path", "wwn", "model", "serial", "revision", "rotational", "bus", "removable"},
 				nil,
 			), valueType: prometheus.GaugeValue,
 		},
@@ -346,6 +347,8 @@ func (c *diskstatsCollector) Update(ch chan<- prometheus.Metric) error {
 			serial,
 			info[udevIDRevision],
 			strconv.FormatUint(queueStats.Rotational, 2),
+			info[udevIDBus],
+			readSysBlockRemovable(dev),
 		)
 
 		statCount := stats.IoStatsCount - 3 // Total diskstats record count, less MajorNumber, MinorNumber and DeviceName
@@ -495,6 +498,17 @@ func (c *diskstatsCollector) Update(ch chan<- prometheus.Metric) error {
 		}
 	}
 	return nil
+}
+
+// readSysBlockRemovable returns the contents of /sys/block/<dev>/removable
+// (typically "0" or "1"). Returns an empty string if the file is missing or
+// cannot be read (e.g. for partitions or virtual devices).
+func readSysBlockRemovable(dev string) string {
+	data, err := os.ReadFile(sysFilePath("block/" + dev + "/removable"))
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(data))
 }
 
 func getUdevDeviceProperties(major, minor uint32) (udevInfo, error) {

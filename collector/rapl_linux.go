@@ -19,13 +19,14 @@ package collector
 import (
 	"errors"
 	"fmt"
-	"github.com/alecthomas/kingpin/v2"
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/procfs/sysfs"
 	"log/slog"
 	"os"
 	"path/filepath"
 	"strconv"
+
+	"github.com/alecthomas/kingpin/v2"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/procfs/sysfs"
 )
 
 const raplCollectorSubsystem = "rapl"
