@@ -63,7 +63,10 @@ const (
 	udevIDRevision              = "ID_REVISION"
 	udevIDSerialShort           = "ID_SERIAL_SHORT"
 	udevIDWWN                   = "ID_WWN"
+	udevIDUSBModel              = "ID_USB_MODEL"
+	udevIDUSBVendor             = "ID_USB_VENDOR"
 	udevSCSIIdentSerial         = "SCSI_IDENT_SERIAL"
+	udevSCSIVendor              = "SCSI_VENDOR"
 )
 
 type typedFactorDesc struct {
@@ -116,7 +119,7 @@ func NewDiskstatsCollector(logger *slog.Logger) (Collector, error) {
 		infoDesc: typedFactorDesc{
 			desc: prometheus.NewDesc(prometheus.BuildFQName(namespace, diskSubsystem, "info"),
 				"Info of /sys/block/<block_device>.",
-				[]string{"device", "major", "minor", "path", "wwn", "model", "serial", "revision", "rotational", "bus", "removable"},
+				[]string{"device", "major", "minor", "path", "wwn", "model", "serial", "revision", "rotational", "bus", "removable", "external"},
 				nil,
 			), valueType: prometheus.GaugeValue,
 		},
@@ -349,6 +352,7 @@ func (c *diskstatsCollector) Update(ch chan<- prometheus.Metric) error {
 			strconv.FormatUint(queueStats.Rotational, 2),
 			info[udevIDBus],
 			readSysBlockRemovable(dev),
+			isExternalDisk(info),
 		)
 
 		statCount := stats.IoStatsCount - 3 // Total diskstats record count, less MajorNumber, MinorNumber and DeviceName
@@ -509,6 +513,27 @@ func readSysBlockRemovable(dev string) string {
 		return ""
 	}
 	return strings.TrimSpace(string(data))
+}
+
+// isExternalDisk reports whether the device described by udev info is an
+// external (USB-attached) disk. Detection rules, in order:
+//  1. ID_USB_MODEL or ID_USB_VENDOR is present -> external USB device.
+//  2. ID_BUS == "usb" -> external USB device.
+//  3. ID_BUS == "scsi" and SCSI_VENDOR contains "USB" -> USB-to-SCSI bridge.
+//
+// Returns "1" when the disk is external, "0" otherwise.
+func isExternalDisk(info udevInfo) string {
+	if info[udevIDUSBModel] != "" || info[udevIDUSBVendor] != "" {
+		return "1"
+	}
+	bus := strings.ToLower(info[udevIDBus])
+	if bus == "usb" {
+		return "1"
+	}
+	if bus == "scsi" && strings.Contains(strings.ToUpper(info[udevSCSIVendor]), "USB") {
+		return "1"
+	}
+	return "0"
 }
 
 func getUdevDeviceProperties(major, minor uint32) (udevInfo, error) {
