@@ -111,6 +111,14 @@ func (c *lsblkCollector) Update(ch chan<- prometheus.Metric) error {
 	}
 
 	args := []string{"--json", "-b", "-o", "NAME,SIZE,FSTYPE,MOUNTPOINT,FSUSED,FSUSE%"}
+	// When running inside a container with the host rootfs mounted under
+	// --path.rootfs (e.g. /host/root), the in-container lsblk cannot see the
+	// host's device-mapper/LVM topology or filesystem usage. Pointing lsblk at
+	// the host root via --sysroot makes it read the host's sysfs, udev and
+	// mountinfo, so LVM volumes and their FSUSED/FSUSE% are reported correctly.
+	if *rootfsPath != "" && *rootfsPath != "/" {
+		args = append(args, "--sysroot", *rootfsPath)
+	}
 	cmd := execCommand(path, args...)
 	out, err := CombinedOutputTimeout(cmd, *lsblkTimeout)
 	if err != nil {
