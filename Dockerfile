@@ -10,7 +10,7 @@ RUN go build -ldflags="-s -w" -a -o node_exporter node_exporter.go
 
 
 FROM alpine:3.21
-RUN apk add smartmontools pciutils nvme-cli util-linux
+RUN apk add smartmontools pciutils nvme-cli util-linux dmidecode
 COPY --from=builder /workspace/node_exporter /bin/node_exporter
 
 EXPOSE      9100
