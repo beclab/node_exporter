@@ -24,7 +24,9 @@ import (
 	"regexp"
 	"slices"
 	"strconv"
+	"strings"
 	"sync"
+	"time"
 
 	"golang.org/x/exp/maps"
 
@@ -46,6 +48,7 @@ type cpuCollector struct {
 	cpuCoreThrottle    *prometheus.Desc
 	cpuPackageThrottle *prometheus.Desc
 	cpuIsolated        *prometheus.Desc
+	cpuDmidecodeInfo   *prometheus.Desc
 	logger             *slog.Logger
 	cpuOnline          *prometheus.Desc
 	cpuStats           map[int64]procfs.CPUStat
@@ -140,6 +143,11 @@ func NewCPUCollector(logger *slog.Logger) (Collector, error) {
 			"CPUs that are online and being scheduled.",
 			[]string{"cpu"}, nil,
 		),
+		cpuDmidecodeInfo: prometheus.NewDesc(
+			prometheus.BuildFQName(namespace, cpuCollectorSubsystem, "dmidecode_info"),
+			"CPU information from the dmidecode command.",
+			[]string{"manufacturer", "model_name"}, nil,
+		),
 		logger:       logger,
 		isolatedCpus: isolcpus,
 		cpuStats:     make(map[int64]procfs.CPUStat),
@@ -194,8 +202,46 @@ func (c *cpuCollector) Update(ch chan<- prometheus.Metric) error {
 	if err != nil {
 		return err
 	}
+	c.updateDmidecodeInfo(ch)
 
 	return nil
+}
+
+// updateDmidecodeInfo runs the dmidecode command and exposes the CPU
+// manufacturer and model name as the node_cpu_dmidecode_info metric.
+func (c *cpuCollector) updateDmidecodeInfo(ch chan<- prometheus.Metric) {
+	manufacturer := c.runDmidecode("processor-manufacturer")
+	modelName := c.runDmidecode("processor-version")
+
+	if manufacturer == "" && modelName == "" {
+		return
+	}
+
+	ch <- prometheus.MustNewConstMetric(c.cpuDmidecodeInfo,
+		prometheus.GaugeValue,
+		1,
+		manufacturer,
+		modelName)
+}
+
+// runDmidecode runs `dmidecode -s <keyword>` and returns the first non-empty
+// output line. It returns an empty string if the command fails.
+func (c *cpuCollector) runDmidecode(keyword string) string {
+	cmd := execCommand("dmidecode", "-s", keyword)
+	out, err := CombinedOutputTimeout(cmd, 5*time.Second)
+	if err != nil {
+		c.logger.Debug("failed to run dmidecode", "keyword", keyword, "error", err)
+		return ""
+	}
+	for _, line := range strings.Split(string(out), "\n") {
+		line = strings.TrimSpace(line)
+		// dmidecode may emit comment lines starting with '#'.
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		return line
+	}
+	return ""
 }
 
 // updateInfo reads /proc/cpuinfo
